@@ -11,7 +11,7 @@ class SimpleSyncClient(NodeManager):
     It does not support receiving requests.
     """
     
-    def __init__(self,settings,peers):
+    def __init__(self,settings,peers,src=None):
         """
         Constructor for SimpleSyncClient
           settings  The settings to use for this client
@@ -19,8 +19,9 @@ class SimpleSyncClient(NodeManager):
         """
         NodeManager.__init__(self,settings)
         self.peers = peers
+        self.src = src
     
-    def start(self):
+    def start(self,src=None):
         """
         Starts this client. The client must be started before sending
         requests. Connections to the configured upstream peers will be
@@ -28,9 +29,9 @@ class SimpleSyncClient(NodeManager):
         established.
         See also: NodeManager.waitForConnection
         """
-        NodeManager.start(self)
+        NodeManager.start(self,src)
         for p in self.peers:
-            self.node.initiateConnection(p,True)
+            self.node.initiateConnection(p,True,self.src)
     
     class __SyncCall:
         def __init__(self):

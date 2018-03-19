@@ -18,6 +18,8 @@ import select
 import errno
 import logging
 
+import sctp
+
 class SelectThread(threading.Thread):
     def __init__(self,node):
         threading.Thread.__init__(self,name="Diameter node thread");
@@ -26,11 +28,12 @@ class SelectThread(threading.Thread):
         self.node.run_select()
 
 class ReconnectThread(threading.Thread):
-    def __init__(self,node):
+    def __init__(self,node,src=None):
         threading.Thread.__init__(self,name="Diameter node reconnect thread");
         self.node=node
+        self.src=src
     def run(self):
-        self.node.run_reconnect()
+        self.node.run_reconnect(self.src)
 
 class Node:
     """A Diameter node
@@ -69,7 +72,7 @@ class Node:
         self.map_fd_conn = {}
         self.logger = logging.getLogger("dk.i1.diameter.node")
     
-    def start(self):
+    def start(self,src=None):
         """
         Start the node.
         The node is started. If the port to listen on is already used by
@@ -79,13 +82,13 @@ class Node:
         self.logger.log(logging.INFO,"Starting Diameter node")
         self.please_stop = False
         self.shutdown_deadline = None
-        self.__prepare()
+        self.__prepare(src)
         
         self.node_thread = SelectThread(self)
         self.node_thread.setDaemon(True)
         self.node_thread.start()
         
-        self.reconnect_thread = ReconnectThread(self)
+        self.reconnect_thread = ReconnectThread(self,src)
         self.reconnect_thread.setDaemon(True)
         self.reconnect_thread.start()
         
@@ -139,12 +142,15 @@ class Node:
         self.map_fd_conn = {}
         self.logger.log(logging.INFO,"Diameter node stopped")
     
-    def __prepare(self):
+    def __prepare(self,src=None):
         if self.settings.port!=0:
             sock_listen = None
             for addr in socket.getaddrinfo(None, self.settings.port, 0, socket.SOCK_STREAM,socket.IPPROTO_TCP, socket.AI_PASSIVE):
                 try:
-                    sock_listen = socket.socket(addr[0], addr[1], addr[2])
+                    #sock_listen = socket.socket(addr[0], addr[1], addr[2])
+                    sock_listen = sctp.sctpsocket_tcp(addr[0])
+                    if src:
+                        sock_listen.bind(src)
                 except socket.error:
                     #most likely error: server has IPv6 capability, but IPv6 not enabled locally
                     sock_listen = None
@@ -211,6 +217,7 @@ class Node:
             if conn.peer and conn.peer==peer:
                 connkey=connkey2
                 break
+        self.logger.log(logging.DEBUG,str(conn.peer.host)+' vs '+str(peer.host))
         self.map_key_conn_lock.release()
         if not connkey:
             self.logger.log(logging.DEBUG,peer.host+" NOT found")
@@ -294,7 +301,7 @@ class Node:
                 # still some output. Wake select thread so it re-evaluates fdsets
                 self.__wakeSelectThread()
     
-    def initiateConnection(self,peer,persistent=False):
+    def initiateConnection(self,peer,persistent=False,src=None):
         """Initiate a connection to a peer.
         A connection (if not already present) will be initiated to the peer.
         On return, the connection is probably not established and it may
@@ -339,7 +346,12 @@ class Node:
         conn.peer = peer
         
         try:
-            fd = socket.socket(ai[0][0], ai[0][1], ai[0][2]);
+            #fd = socket.socket(ai[0][0], ai[0][1], ai[0][2]);
+            # modify tj 2018-03-14
+            fd = sctp.sctpsocket_tcp(ai[0][0])
+            self.logger.log(logging.DEBUG,"Bind socket")
+            if src:
+                fd.bind(src)
             fd.setblocking(False)
             fd.connect(ai[0][4])
         except socket.error, (err,errstr):
@@ -512,7 +524,7 @@ class Node:
                 self.__sendDWR(conn)
         self.map_key_conn_lock.release()
     
-    def run_reconnect(self):
+    def run_reconnect(self,src=None):
         while True:
             self.map_key_conn_cv.acquire()
             if self.please_stop:
@@ -523,7 +535,9 @@ class Node:
             
             self.persistent_peers_lock.acquire()
             for pp in self.persistent_peers:
-                self.initiateConnection(pp,False);
+                if self.please_stop:
+                    continue
+                self.initiateConnection(pp,False,src);
             self.persistent_peers_lock.release()
     
     def __handleReadable(self,conn):
@@ -913,11 +927,14 @@ class Node:
                     acct_app_id = None
                     for ga in g:
                         if ga.code==ProtocolConstants.DI_VENDOR_ID:
-                            vendor_id = AVP_Unsigned32.narrow(g[0]).queryValue()
-                        elif g.code==ProtocolConstants.DI_AUTH_APPLICATION_ID:
-                            auth_app_id = AVP_Unsigned32.narrow(g).queryValue()
-                        elif g.code==ProtocolConstants.DI_ACCT_APPLICATION_ID:
-                            acct_app_id = AVP_Unsigned32.narrow(g).queryValue()
+                            vendor_id = AVP_Unsigned32.narrow(ga).queryValue()
+                            self.logger.log(logging.DEBUG,"VENDOR app id:"+str(vendor_id))
+                        elif ga.code==ProtocolConstants.DI_AUTH_APPLICATION_ID:
+                            auth_app_id = AVP_Unsigned32.narrow(ga).queryValue()
+                            self.logger.log(logging.DEBUG,"Auth app id:"+str(auth_app_id))
+                        elif ga.code==ProtocolConstants.DI_ACCT_APPLICATION_ID:
+                            acct_app_id = AVP_Unsigned32.narrow(ga).queryValue()
+                            self.logger.log(logging.DEBUG,"ACCT app id:"+str(acct_app_id))
                         else:
                             raise InvalidAVPValueError(a)
                     if (not vendor_id) or not (auth_app_id or acct_app_id):
@@ -928,7 +945,7 @@ class Node:
                         reported_capabilities.addVendorAcctApp(vendor_id,acct_app_id)
                 else:
                     raise InvalidAVPValueError(a)
-            
+            self.logger.log(logging.DEBUG,"Setting Capability:"+str(self.settings.capabilities))
             result_capabilities = Capability.calculateIntersection(self.settings.capabilities, reported_capabilities)
             if self.logger.isEnabledFor(logging.DEBUG):
                 s = ""

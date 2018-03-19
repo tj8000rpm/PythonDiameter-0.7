@@ -51,28 +51,28 @@ class Capability:
                len(self.acct_vendor)==0
 
     def calculateIntersection(us, peer):
-	    #assumption: we are not a relay
-	    c = Capability()
-	    for vendor_id in peer.supported_vendor:
-		    if vendor_id in us.supported_vendor:
-			    c.addSupportedVendor(vendor_id)
-	    for app in peer.auth_app:
-		    if app==ProtocolConstants.DIAMETER_APPLICATION_RELAY or \
-		       (app in us.auth_app):
-			    c.addAuthApp(app)
-	    for app in peer.acct_app:
-		    if app==ProtocolConstants.DIAMETER_APPLICATION_RELAY or \
-		       (app in us.acct_app):
-			    c.addAcctApp(app)
-	    for va in peer.auth_vendor:
-		    #relay app is not well-defined for vendor-app
-		    if us.isAllowedVendorAuthApp(va.vendor_id,va.application_id):
-			    c.addVendorAuthApp(va.vendor_id,va.application_id)
-	    for va in peer.acct_vendor:
-		    #relay app is not well-defined for vendor-app
-		    if us.isAllowedVendorAcctApp(va.vendor_id,va.application_id):
-			    c.addVendorAcctApp(va.vendor_id,va.application_id)
-	    return c;
+        #assumption: we are not a relay
+        c = Capability()
+        for vendor_id in peer.supported_vendor:
+            if vendor_id in us.supported_vendor:
+                c.addSupportedVendor(vendor_id)
+        for app in peer.auth_app:
+            if app==ProtocolConstants.DIAMETER_APPLICATION_RELAY or \
+               (app in us.auth_app):
+                c.addAuthApp(app)
+        for app in peer.acct_app:
+            if app==ProtocolConstants.DIAMETER_APPLICATION_RELAY or \
+               (app in us.acct_app):
+                c.addAcctApp(app)
+        for va in peer.auth_vendor:
+            #relay app is not well-defined for vendor-app
+            if us.isAllowedVendorAuthApp(va.vendor_id,va.application_id):
+                c.addVendorAuthApp(va.vendor_id,va.application_id)
+        for va in peer.acct_vendor:
+            #relay app is not well-defined for vendor-app
+            if us.isAllowedVendorAcctApp(va.vendor_id,va.application_id):
+                c.addVendorAcctApp(va.vendor_id,va.application_id)
+        return c;
     calculateIntersection = staticmethod(calculateIntersection)
     
 def _unittest():

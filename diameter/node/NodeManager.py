@@ -15,7 +15,7 @@ class NodeManager:
     """
     #If your needs are even simpler then have a look at {@link SimpleSyncClient} and {@link dk.i1.diameter.session.SessionManager}
     
-    def __init__(self,settings):
+    def __init__(self,settings,src=None):
         """
         Constructor for NodeManager.
         A Node instance is constructed using the specified settings, and
@@ -27,11 +27,11 @@ class NodeManager:
         self.req_map_lock = threading.Lock()
         self.logger = logging.getLogger("dk.i1.diameter.node")
     
-    def start(self):
+    def start(self,src=None):
         """
         Starts the embedded Node.
         """
-        self.node.start()
+        self.node.start(src)
     
     def stop(self,grace_time=0):
         """
